@@ -2,7 +2,7 @@
 
 import pytest
 
-from svb2json.parser import parse_sbv, parse_timestamp
+from svb2json.parser import parse_sbv, parse_timestamp, merge_subtitles, merge_subtitles
 
 
 class TestParseTimestamp:
@@ -84,7 +84,7 @@ Line 2
 """
         entries = parse_sbv(content)
         assert len(entries) == 1
-        assert entries[0]["text"] == "Line 1\nLine 2"
+        assert entries[0]["text"] == "Line 1 Line 2"
 
     def test_empty_content(self):
         """Test parsing empty content."""
@@ -113,3 +113,105 @@ Subtitle text 2"""
         assert len(entries) == 2
         assert entries[0]["text"] == "Subtitle text 1"
         assert entries[1]["text"] == "Subtitle text 2"
+
+    def test_round_to_seconds(self):
+        """Test parsing with round_to_seconds flag."""
+        content = """0:00:01.200,0:00:03.800
+Subtitle text 1
+
+"""
+        entries = parse_sbv(content, round_to_seconds=True)
+        assert len(entries) == 1
+        assert entries[0]["start"] == 1  # 1200ms rounds to 1s
+        assert entries[0]["end"] == 4    # 3800ms rounds to 4s
+        assert entries[0]["text"] == "Subtitle text 1"
+
+    def test_milliseconds_default(self):
+        """Test that milliseconds are returned by default."""
+        content = """0:00:01.200,0:00:03.800
+Subtitle text 1
+
+"""
+        entries = parse_sbv(content)
+        assert len(entries) == 1
+        assert entries[0]["start"] == 1200
+        assert entries[0]["end"] == 3800
+
+
+class TestMergeSubtitles:
+    """Tests for merge_subtitles function."""
+
+    def test_merge_basic(self):
+        """Test basic merging of subtitles."""
+        entries = [
+            {"id": 1, "start": 0, "end": 5000, "text": "First"},
+            {"id": 2, "start": 5000, "end": 10000, "text": "Second"},
+        ]
+        merged = merge_subtitles(entries, duration_seconds=10, use_seconds=False)
+        assert len(merged) == 1
+        assert merged[0]["start"] == 0
+        assert merged[0]["end"] == 10000
+        assert merged[0]["text"] == "First Second"
+
+    def test_merge_with_seconds(self):
+        """Test merging with seconds-based timestamps."""
+        entries = [
+            {"id": 1, "start": 0, "end": 5, "text": "First"},
+            {"id": 2, "start": 5, "end": 10, "text": "Second"},
+        ]
+        merged = merge_subtitles(entries, duration_seconds=10, use_seconds=True)
+        assert len(merged) == 1
+        assert merged[0]["start"] == 0
+        assert merged[0]["end"] == 10
+        assert merged[0]["text"] == "First Second"
+
+    def test_skip_long_subtitles(self):
+        """Test that subtitles >= duration are not merged."""
+        entries = [
+            {"id": 1, "start": 0, "end": 10, "text": "Already long"},
+            {"id": 2, "start": 10, "end": 15, "text": "Next"},
+        ]
+        merged = merge_subtitles(entries, duration_seconds=10, use_seconds=True)
+        assert len(merged) == 2
+        assert merged[0]["text"] == "Already long"
+        assert merged[1]["text"] == "Next"
+
+    def test_skip_threshold_subtitles(self):
+        """Test that subtitles >= 2/3 duration threshold are not merged."""
+        # For duration=12, threshold is round(2*12/3) = 8
+        entries = [
+            {"id": 1, "start": 0, "end": 8, "text": "At threshold"},
+            {"id": 2, "start": 8, "end": 15, "text": "Next"},
+        ]
+        merged = merge_subtitles(entries, duration_seconds=12, use_seconds=True)
+        assert len(merged) == 2
+        assert merged[0]["text"] == "At threshold"
+        assert merged[1]["text"] == "Next"
+
+    def test_merge_multiple_short(self):
+        """Test merging multiple short subtitles."""
+        entries = [
+            {"id": 1, "start": 0, "end": 3, "text": "One"},
+            {"id": 2, "start": 3, "end": 6, "text": "Two"},
+            {"id": 3, "start": 6, "end": 10, "text": "Three"},
+        ]
+        merged = merge_subtitles(entries, duration_seconds=10, use_seconds=True)
+        assert len(merged) == 1
+        assert merged[0]["text"] == "One Two Three"
+        assert merged[0]["start"] == 0
+        assert merged[0]["end"] == 10
+
+    def test_renumber_ids(self):
+        """Test that merged entries get renumbered IDs."""
+        entries = [
+            {"id": 5, "start": 0, "end": 10, "text": "First"},
+            {"id": 10, "start": 10, "end": 15, "text": "Second"},
+        ]
+        merged = merge_subtitles(entries, duration_seconds=10, use_seconds=True)
+        assert merged[0]["id"] == 1
+        assert merged[1]["id"] == 2
+
+    def test_empty_entries(self):
+        """Test merging empty list."""
+        merged = merge_subtitles([], duration_seconds=10, use_seconds=True)
+        assert len(merged) == 0

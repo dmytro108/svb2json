@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from .parser import parse_sbv
+from .parser import parse_sbv, merge_subtitles
 
 
 def main() -> int:
@@ -35,12 +35,30 @@ def main() -> int:
         default=2,
         help="JSON indentation level (default: 2)",
     )
+    parser.add_argument(
+        "-s",
+        "--seconds",
+        action="store_true",
+        help="Round timestamps to whole seconds and output in seconds instead of milliseconds",
+    )
+    parser.add_argument(
+        "-m",
+        "--merge",
+        type=int,
+        metavar="SECONDS",
+        help="Merge subtitles into timeframes of specified duration in seconds",
+    )
 
     args = parser.parse_args()
 
     # Validate indent argument
     if args.indent is not None and args.indent < 0:
         print("Error: Indentation level cannot be negative", file=sys.stderr)
+        return 1
+
+    # Validate merge argument
+    if args.merge is not None and args.merge <= 0:
+        print("Error: Merge duration must be positive", file=sys.stderr)
         return 1
 
     # Read input file
@@ -57,10 +75,14 @@ def main() -> int:
 
     # Parse SBV content
     try:
-        entries = parse_sbv(content)
+        entries = parse_sbv(content, round_to_seconds=args.seconds)
     except ValueError as e:
         print(f"Error parsing SBV file: {e}", file=sys.stderr)
         return 1
+
+    # Merge subtitles if requested
+    if args.merge:
+        entries = merge_subtitles(entries, args.merge, use_seconds=args.seconds)
 
     # Generate JSON output
     json_output = json.dumps(entries, indent=args.indent, ensure_ascii=False)

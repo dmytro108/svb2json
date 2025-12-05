@@ -1,7 +1,6 @@
 """Tests for the CLI module."""
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest

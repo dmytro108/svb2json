@@ -38,6 +38,11 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    # Validate indent argument
+    if args.indent is not None and args.indent < 0:
+        print("Error: Indentation level cannot be negative", file=sys.stderr)
+        return 1
+
     # Read input file
     input_path: Path = args.input
     if not input_path.exists():
@@ -46,14 +51,14 @@ def main() -> int:
 
     try:
         content = input_path.read_text(encoding="utf-8")
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         print(f"Error reading input file: {e}", file=sys.stderr)
         return 1
 
     # Parse SBV content
     try:
         entries = parse_sbv(content)
-    except Exception as e:
+    except ValueError as e:
         print(f"Error parsing SBV file: {e}", file=sys.stderr)
         return 1
 
@@ -64,7 +69,7 @@ def main() -> int:
     if args.output:
         try:
             args.output.write_text(json_output + "\n", encoding="utf-8")
-        except Exception as e:
+        except OSError as e:
             print(f"Error writing output file: {e}", file=sys.stderr)
             return 1
     else:

@@ -1,6 +1,6 @@
 # svb2json
 
-A Python CLI tool to convert YouTube SBV subtitles to JSON or text format.
+A Python CLI tool to convert YouTube SBV subtitles to JSON or text format, and chunk files based on LLM token limits.
 
 ## Installation
 
@@ -9,6 +9,33 @@ pip install .
 ```
 
 ## Usage
+
+### chunk2tokens - Chunk Files by Token Limit
+
+Split large files into smaller chunks based on LLM token counts while preserving file structure.
+
+```bash
+# Chunk a JSON file with 800 tokens per chunk for GPT5
+chunk2tokens input.json -t 800 -m GPT5
+
+# Chunk a text file with 1000 tokens for GPT-4
+chunk2tokens data.txt -t 1000 -m GPT-4
+
+# Save chunks to a custom directory
+chunk2tokens file.json -t 500 -m GPT-3.5 -o chunks/
+```
+
+**Features:**
+- **Structure-aware chunking**: JSON files are split intelligently while maintaining valid JSON structure in each chunk
+- **Multiple LLM models**: Supports GPT-3.5, GPT-4, GPT-4O, GPT5, GPT-3, and CODEX
+- **Automatic file naming**: Creates files like `filename-01.ext`, `filename-02.ext`, etc.
+- **Smart text splitting**: Text files are split by paragraphs/lines, avoiding mid-sentence breaks
+- **Token-accurate counting**: Uses tiktoken library for precise token counting per model
+
+**Options:**
+- `-t, --tokens`: Maximum tokens per chunk (default: 800)
+- `-m, --model`: LLM model for token counting (default: GPT5)
+- `-o, --output`: Output directory for chunks (default: same as input file)
 
 ### svb2json - Convert to JSON
 

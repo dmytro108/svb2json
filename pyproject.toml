@@ -9,6 +9,9 @@ description = "Convert YouTube SBV subtitles to JSON format"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
+dependencies = [
+    "tiktoken>=0.5.0",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -22,6 +25,7 @@ classifiers = [
 [project.scripts]
 svb2json = "svb2json.cli:main"
 svb2txt = "svb2json.cli_txt:main"
+chunk2tokens = "svb2json.chunk2tokens:main"
 
 [project.optional-dependencies]
 dev = [

@@ -1,6 +1,6 @@
 # svb2json
 
-A Python CLI tool to convert YouTube SBV subtitles to JSON format.
+A Python CLI tool to convert YouTube SBV subtitles to JSON or text format.
 
 ## Installation
 
@@ -9,6 +9,8 @@ pip install .
 ```
 
 ## Usage
+
+### svb2json - Convert to JSON
 
 ```bash
 # Convert SBV to JSON and print to stdout
@@ -19,6 +21,34 @@ svb2json input.sbv -o output.json
 
 # Customize indentation
 svb2json input.sbv --indent 4
+
+# Round timestamps to seconds
+svb2json input.sbv -s
+
+# Merge subtitles into 20-second timeframes
+svb2json input.sbv -m 20
+
+# Custom timestamp format (HH:MM:SS, HH:MM, SS, MM, Mi)
+svb2json input.sbv -f HH:MM:SS
+```
+
+### svb2txt - Convert to Text
+
+```bash
+# Convert SBV to text format and print to stdout
+svb2txt input.sbv
+
+# Write output to a file
+svb2txt input.sbv -o output.txt
+
+# Merge subtitles into 20-second timeframes
+svb2txt input.sbv -m 20
+
+# Custom timestamp format with milliseconds
+svb2txt input.sbv -f HH:MM:SS.Mi
+
+# Round timestamps to seconds
+svb2txt input.sbv -s
 ```
 
 ## SBV Format
@@ -39,7 +69,7 @@ Subtitle text 2
 
 ## JSON Output
 
-The tool outputs a JSON array with subtitle entries:
+The `svb2json` tool outputs a JSON array with subtitle entries:
 
 ```json
 [
@@ -59,9 +89,23 @@ The tool outputs a JSON array with subtitle entries:
 ```
 
 - `id`: Sequential identifier starting from 1
-- `start`: Start time in milliseconds
-- `end`: End time in milliseconds
+- `start`: Start time in milliseconds (or seconds with `-s` flag)
+- `end`: End time in milliseconds (or seconds with `-s` flag)
 - `text`: Subtitle text content
+
+## Text Output
+
+The `svb2txt` tool outputs text in the format `[start–end] text`:
+
+```
+[00:00:01–00:00:03] Subtitle text 1
+[00:00:04–00:00:06] Subtitle text 2
+```
+
+Each line contains:
+- Timestamp range in brackets (format controlled by `-f` flag)
+- En dash (–) separator between start and end times
+- Subtitle text content
 
 ## License
 

@@ -21,6 +21,7 @@ classifiers = [
 
 [project.scripts]
 svb2json = "svb2json.cli:main"
+svb2txt = "svb2json.cli_txt:main"
 
 [project.optional-dependencies]
 dev = [

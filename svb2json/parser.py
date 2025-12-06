@@ -1,7 +1,7 @@
 """SBV subtitle file parser."""
 
 import re
-from typing import List, TypedDict
+from typing import List, TypedDict, Union
 
 
 class SubtitleEntry(TypedDict):
@@ -43,6 +43,48 @@ def parse_timestamp(timestamp: str) -> tuple[int, int]:
     end_total_ms = (end_h * 3600 + end_m * 60 + end_s) * 1000 + end_ms
 
     return start_total_ms, end_total_ms
+
+
+def format_timestamp(ms: int, format_type: str) -> Union[str, int]:
+    """Format a timestamp in milliseconds to the specified format.
+
+    Args:
+        ms: Timestamp in milliseconds
+        format_type: One of "HH:MM:SS.Mi", "HH:MM:SS", "HH:MM", "SS", "MM", "Mi"
+
+    Returns:
+        Formatted timestamp as string or integer
+    """
+    if format_type == "Mi":
+        return ms
+    
+    if format_type == "SS":
+        return round(ms / 1000)
+    
+    if format_type == "MM":
+        return round(ms / 60000)
+    
+    # For time formats, calculate hours, minutes, seconds, milliseconds
+    total_seconds = ms / 1000
+    hours = int(total_seconds // 3600)
+    minutes = int((total_seconds % 3600) // 60)
+    seconds = int(total_seconds % 60)
+    milliseconds = int(ms % 1000)
+    
+    if format_type == "HH:MM":
+        # Round to nearest minute
+        total_minutes = round(ms / 60000)
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        return f"{hours:02d}:{minutes:02d}"
+    
+    if format_type == "HH:MM:SS":
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    
+    if format_type == "HH:MM:SS.Mi":
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+    
+    raise ValueError(f"Invalid format type: {format_type}")
 
 
 def parse_sbv(content: str, round_to_seconds: bool = False) -> List[SubtitleEntry]:
@@ -183,6 +225,17 @@ def merge_subtitles(
             
             # Don't merge if next subtitle is too long
             if next_duration >= min_duration_threshold:
+                # Create merged entry with what we've collected so far
+                if current_group_texts:
+                    last_end = entries[i - 1]["end"]
+                    merged.append(
+                        {
+                            "id": len(merged) + 1,
+                            "start": current_group_start,
+                            "end": last_end,
+                            "text": " ".join(current_group_texts),
+                        }
+                    )
                 break
             
             # If this entry completes or exceeds the timeframe, include it and stop

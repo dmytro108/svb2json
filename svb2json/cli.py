@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from .parser import parse_sbv, merge_subtitles
+from .parser import parse_sbv, merge_subtitles, format_timestamp
 
 
 def main() -> int:
@@ -48,6 +48,14 @@ def main() -> int:
         metavar="SECONDS",
         help="Merge subtitles into timeframes of specified duration in seconds",
     )
+    parser.add_argument(
+        "-f",
+        "--format",
+        type=str,
+        default="HH:MM:SS",
+        choices=["HH:MM:SS.Mi", "HH:MM:SS", "HH:MM", "SS", "MM", "Mi"],
+        help="Timestamp format (default: HH:MM:SS)",
+    )
 
     args = parser.parse_args()
 
@@ -83,6 +91,12 @@ def main() -> int:
     # Merge subtitles if requested
     if args.merge:
         entries = merge_subtitles(entries, args.merge, use_seconds=args.seconds)
+
+    # Apply timestamp formatting if not using default milliseconds
+    if args.format != "Mi" or args.seconds:
+        for entry in entries:
+            entry["start"] = format_timestamp(entry["start"] if not args.seconds else entry["start"] * 1000, args.format)
+            entry["end"] = format_timestamp(entry["end"] if not args.seconds else entry["end"] * 1000, args.format)
 
     # Generate JSON output
     json_output = json.dumps(entries, indent=args.indent, ensure_ascii=False)

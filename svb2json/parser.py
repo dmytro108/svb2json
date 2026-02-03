@@ -18,6 +18,9 @@ TIMESTAMP_PATTERN = re.compile(
     r"^(\d+):(\d{2}):(\d{2})\.(\d{3}),(\d+):(\d{2}):(\d{2})\.(\d{3})$"
 )
 
+# Regex pattern for simple timestamp format: M:SS (minutes:seconds, minutes can be any length)
+SIMPLE_TIMESTAMP_PATTERN = re.compile(r"^(\d+):(\d{2})$")
+
 
 def parse_timestamp(timestamp: str) -> tuple[int, int]:
     """Parse an SBV timestamp line and return start/end times in milliseconds.
@@ -271,3 +274,187 @@ def merge_subtitles(
             )
 
     return merged
+
+
+def detect_format(content: str) -> str:
+    """Detect the subtitle format from content.
+
+    Args:
+        content: The subtitle file content
+
+    Returns:
+        "sbv" for SBV format, "simple" for simple format
+
+    Raises:
+        ValueError: If format cannot be detected
+    """
+    lines = content.strip().split("\n")
+
+    # Find first non-empty line
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # Check if it's SBV format
+        if TIMESTAMP_PATTERN.match(stripped):
+            return "sbv"
+
+        # Check if it's simple format
+        if SIMPLE_TIMESTAMP_PATTERN.match(stripped):
+            return "simple"
+
+        # If we found a non-empty line that's not a timestamp, format is unclear
+        break
+
+    raise ValueError("Could not detect subtitle format - no valid timestamp found")
+
+
+def parse_simple_timestamp(timestamp: str) -> int:
+    """Parse a simple timestamp and return time in milliseconds.
+
+    Args:
+        timestamp: Timestamp string in format "m:ss" or "mm:ss"
+
+    Returns:
+        Time in milliseconds
+
+    Raises:
+        ValueError: If timestamp format is invalid
+    """
+    match = SIMPLE_TIMESTAMP_PATTERN.match(timestamp.strip())
+    if not match:
+        raise ValueError(f"Invalid simple timestamp format: {timestamp}")
+
+    minutes, seconds = map(int, match.groups())
+    return (minutes * 60 + seconds) * 1000
+
+
+def parse_simple(
+    content: str, round_to_seconds: bool = False, default_duration_ms: int = 5000
+) -> List[SubtitleEntry]:
+    """Parse simple subtitle format and return a list of subtitle entries.
+
+    Simple format uses single timestamps (M:SS) with text following each timestamp.
+    End times are calculated as the start time of the next entry, or start + default_duration_ms
+    for the last entry.
+
+    Args:
+        content: The full content of a simple subtitle file
+        round_to_seconds: If True, round timestamps to whole seconds and convert to seconds
+        default_duration_ms: Duration in milliseconds to use for last entry (default: 5000)
+
+    Returns:
+        List of SubtitleEntry dictionaries
+
+    Raises:
+        ValueError: If content is empty
+    """
+    if not content.strip():
+        raise ValueError("Cannot parse empty content")
+
+    entries: List[SubtitleEntry] = []
+    lines = content.split("\n")
+    entry_id = 0
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Skip empty lines
+        if not line:
+            i += 1
+            continue
+
+        # Check if this line is a timestamp
+        if SIMPLE_TIMESTAMP_PATTERN.match(line):
+            entry_id += 1
+            start_ms = parse_simple_timestamp(line)
+
+            # Collect text lines until we hit another timestamp or end
+            text_lines = []
+            i += 1
+            while i < len(lines):
+                text_line = lines[i]
+                stripped = text_line.strip()
+                # Stop if we hit another timestamp
+                if SIMPLE_TIMESTAMP_PATTERN.match(stripped):
+                    break
+                # Skip empty lines within text
+                if stripped:
+                    text_lines.append(stripped)
+                i += 1
+
+            text = " ".join(text_lines).strip()
+
+            # Store entry with temporary end time (will be updated)
+            entries.append(
+                {
+                    "id": entry_id,
+                    "start": start_ms,
+                    "end": start_ms,  # Temporary, will be updated
+                    "text": text,
+                }
+            )
+        else:
+            # Skip non-timestamp lines before first timestamp
+            i += 1
+
+    # Calculate end times based on next entry's start
+    for i in range(len(entries)):
+        if i < len(entries) - 1:
+            # End time is the start of next entry
+            entries[i]["end"] = entries[i + 1]["start"]
+        else:
+            # Last entry gets default duration
+            entries[i]["end"] = entries[i]["start"] + default_duration_ms
+
+    # Convert to seconds if requested
+    if round_to_seconds:
+        for entry in entries:
+            entry["start"] = round(entry["start"] / 1000)
+            entry["end"] = round(entry["end"] / 1000)
+
+    return entries
+
+
+def parse_subtitles(
+    content: str,
+    round_to_seconds: bool = False,
+    format_hint: str = None,
+    default_duration_ms: int = 5000,
+) -> List[SubtitleEntry]:
+    """Parse subtitle content with auto-detection of format.
+
+    This is the recommended entry point for parsing subtitles. It automatically
+    detects whether the content is in SBV or simple format and delegates to
+    the appropriate parser.
+
+    Args:
+        content: The full content of a subtitle file
+        round_to_seconds: If True, round timestamps to whole seconds and convert to seconds
+        format_hint: Optional format hint ("sbv" or "simple") to skip detection
+        default_duration_ms: Duration in milliseconds for last entry in simple format (default: 5000)
+
+    Returns:
+        List of SubtitleEntry dictionaries
+
+    Raises:
+        ValueError: If format cannot be detected or is invalid
+    """
+    # Use format hint if provided, otherwise auto-detect
+    if format_hint:
+        detected_format = format_hint
+    else:
+        detected_format = detect_format(content)
+
+    if detected_format == "sbv":
+        return parse_sbv(content, round_to_seconds=round_to_seconds)
+    elif detected_format == "simple":
+        return parse_simple(
+            content,
+            round_to_seconds=round_to_seconds,
+            default_duration_ms=default_duration_ms,
+        )
+    else:
+        raise ValueError(f"Unknown format: {detected_format}")

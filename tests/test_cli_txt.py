@@ -120,6 +120,94 @@ Third
         # Should merge into one entry
         assert output_content.count("[") == 1
         assert "First Second Third" in output_content
-        
+
+    finally:
+        sys.argv = original_argv
+
+
+def test_simple_format_conversion(tmp_path):
+    """Test conversion of simple timestamp format to text."""
+    simple_content = """0:00
+First text
+0:05
+Second text"""
+
+    input_file = tmp_path / "test.txt"
+    output_file = tmp_path / "output.txt"
+
+    input_file.write_text(simple_content, encoding="utf-8")
+
+    original_argv = sys.argv
+    try:
+        sys.argv = ["svb2txt", str(input_file), "-o", str(output_file)]
+        exit_code = main()
+
+        assert exit_code == 0
+        assert output_file.exists()
+
+        output_content = output_file.read_text(encoding="utf-8")
+        lines = output_content.strip().split("\n")
+
+        assert len(lines) == 2
+        assert "[00:00:00–00:00:05] First text" in lines[0]
+        assert "[00:00:05–00:00:10] Second text" in lines[1]
+
+    finally:
+        sys.argv = original_argv
+
+
+def test_simple_format_with_formatting(tmp_path):
+    """Test simple format with different timestamp formats."""
+    simple_content = """0:00
+Text 1
+1:05
+Text 2"""
+
+    input_file = tmp_path / "test.txt"
+    output_file = tmp_path / "output.txt"
+
+    input_file.write_text(simple_content, encoding="utf-8")
+
+    original_argv = sys.argv
+    try:
+        sys.argv = ["svb2txt", str(input_file), "-o", str(output_file), "-f", "HH:MM"]
+        exit_code = main()
+
+        assert exit_code == 0
+
+        output_content = output_file.read_text(encoding="utf-8")
+        assert "[00:00–00:01]" in output_content
+
+    finally:
+        sys.argv = original_argv
+
+
+def test_simple_format_with_merge(tmp_path):
+    """Test simple format with merge option."""
+    simple_content = """0:00
+Text 1
+0:01
+Text 2
+0:02
+Text 3
+0:03
+Text 4"""
+
+    input_file = tmp_path / "test.txt"
+    output_file = tmp_path / "output.txt"
+
+    input_file.write_text(simple_content, encoding="utf-8")
+
+    original_argv = sys.argv
+    try:
+        sys.argv = ["svb2txt", str(input_file), "-o", str(output_file), "-m", "3"]
+        exit_code = main()
+
+        assert exit_code == 0
+
+        output_content = output_file.read_text(encoding="utf-8")
+        # First three entries should merge (each 1s)
+        assert "Text 1 Text 2 Text 3" in output_content
+
     finally:
         sys.argv = original_argv

@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from .parser import parse_sbv, merge_subtitles, format_timestamp
+from .parser import parse_subtitles, merge_subtitles, format_timestamp
 
 
 def main() -> int:
@@ -81,9 +81,9 @@ def main() -> int:
         print(f"Error reading input file: {e}", file=sys.stderr)
         return 1
 
-    # Parse SBV content
+    # Parse subtitle content (auto-detects SBV or simple format)
     try:
-        entries = parse_sbv(content, round_to_seconds=args.seconds)
+        entries = parse_subtitles(content, round_to_seconds=args.seconds)
     except ValueError as e:
         print(f"Error parsing SBV file: {e}", file=sys.stderr)
         return 1

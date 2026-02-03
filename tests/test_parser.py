@@ -2,7 +2,15 @@
 
 import pytest
 
-from svb2json.parser import parse_sbv, parse_timestamp, merge_subtitles, merge_subtitles
+from svb2json.parser import (
+    parse_sbv,
+    parse_timestamp,
+    merge_subtitles,
+    detect_format,
+    parse_simple_timestamp,
+    parse_simple,
+    parse_subtitles,
+)
 
 
 class TestParseTimestamp:
@@ -215,3 +223,306 @@ class TestMergeSubtitles:
         """Test merging empty list."""
         merged = merge_subtitles([], duration_seconds=10, use_seconds=True)
         assert len(merged) == 0
+
+
+class TestDetectFormat:
+    """Tests for detect_format function."""
+
+    def test_detect_sbv_format(self):
+        """Test detecting SBV format."""
+        content = "0:00:01.000,0:00:03.000\nText"
+        assert detect_format(content) == "sbv"
+
+    def test_detect_simple_format(self):
+        """Test detecting simple format."""
+        content = "0:00\nText"
+        assert detect_format(content) == "simple"
+
+    def test_detect_with_leading_blank_lines(self):
+        """Test detection with leading blank lines."""
+        content = "\n\n0:00\nText"
+        assert detect_format(content) == "simple"
+
+    def test_detect_sbv_with_blank_lines(self):
+        """Test detecting SBV with blank lines."""
+        content = "\n\n0:00:01.000,0:00:03.000\nText"
+        assert detect_format(content) == "sbv"
+
+    def test_invalid_content_raises(self):
+        """Test that invalid content raises ValueError."""
+        with pytest.raises(ValueError, match="Could not detect subtitle format"):
+            detect_format("Just some random text")
+
+    def test_empty_content_raises(self):
+        """Test that empty content raises ValueError."""
+        with pytest.raises(ValueError, match="Could not detect subtitle format"):
+            detect_format("")
+
+    def test_only_whitespace_raises(self):
+        """Test that only whitespace raises ValueError."""
+        with pytest.raises(ValueError, match="Could not detect subtitle format"):
+            detect_format("\n\n   \n")
+
+
+class TestParseSimpleTimestamp:
+    """Tests for parse_simple_timestamp function."""
+
+    def test_zero_timestamp(self):
+        """Test parsing 0:00."""
+        ms = parse_simple_timestamp("0:00")
+        assert ms == 0
+
+    def test_simple_timestamp(self):
+        """Test parsing 0:01."""
+        ms = parse_simple_timestamp("0:01")
+        assert ms == 1000
+
+    def test_minutes_timestamp(self):
+        """Test parsing 10:30."""
+        ms = parse_simple_timestamp("10:30")
+        assert ms == (10 * 60 + 30) * 1000
+
+    def test_large_minutes(self):
+        """Test parsing 120:30."""
+        ms = parse_simple_timestamp("120:30")
+        assert ms == (120 * 60 + 30) * 1000
+
+    def test_with_whitespace(self):
+        """Test parsing with leading/trailing whitespace."""
+        ms = parse_simple_timestamp("  10:30  ")
+        assert ms == (10 * 60 + 30) * 1000
+
+    def test_invalid_format_raises(self):
+        """Test that invalid format raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid simple timestamp format"):
+            parse_simple_timestamp("1:2")  # seconds must be 2 digits
+
+    def test_invalid_format_with_milliseconds_raises(self):
+        """Test that SBV-style timestamp raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid simple timestamp format"):
+            parse_simple_timestamp("0:00:01.000")
+
+    def test_negative_timestamp_raises(self):
+        """Test that negative timestamp raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid simple timestamp format"):
+            parse_simple_timestamp("-1:00")
+
+
+class TestParseSimple:
+    """Tests for parse_simple function."""
+
+    def test_single_entry(self):
+        """Test parsing a single entry."""
+        content = """0:00
+Text line 1"""
+        entries = parse_simple(content)
+        assert len(entries) == 1
+        assert entries[0]["id"] == 1
+        assert entries[0]["start"] == 0
+        assert entries[0]["end"] == 5000  # default duration
+        assert entries[0]["text"] == "Text line 1"
+
+    def test_multiple_entries(self):
+        """Test parsing multiple entries with end time calculation."""
+        content = """0:00
+First text
+0:01
+Second text
+10:30
+Third text"""
+        entries = parse_simple(content)
+        assert len(entries) == 3
+
+        assert entries[0]["id"] == 1
+        assert entries[0]["start"] == 0
+        assert entries[0]["end"] == 1000
+        assert entries[0]["text"] == "First text"
+
+        assert entries[1]["id"] == 2
+        assert entries[1]["start"] == 1000
+        assert entries[1]["end"] == 10 * 60 * 1000 + 30 * 1000
+        assert entries[1]["text"] == "Second text"
+
+        assert entries[2]["id"] == 3
+        assert entries[2]["start"] == 10 * 60 * 1000 + 30 * 1000
+        assert entries[2]["end"] == 10 * 60 * 1000 + 30 * 1000 + 5000
+        assert entries[2]["text"] == "Third text"
+
+    def test_multiline_text(self):
+        """Test that multiline text is joined with spaces."""
+        content = """0:00
+Line 1
+Line 2
+Line 3
+0:05
+Next text"""
+        entries = parse_simple(content)
+        assert len(entries) == 2
+        assert entries[0]["text"] == "Line 1 Line 2 Line 3"
+        assert entries[1]["text"] == "Next text"
+
+    def test_empty_text_after_timestamp(self):
+        """Test handling entry with no text."""
+        content = """0:00
+
+0:05
+Some text"""
+        entries = parse_simple(content)
+        assert len(entries) == 2
+        assert entries[0]["text"] == ""
+        assert entries[1]["text"] == "Some text"
+
+    def test_leading_blank_lines(self):
+        """Test handling leading blank lines."""
+        content = """
+
+0:00
+Text"""
+        entries = parse_simple(content)
+        assert len(entries) == 1
+        assert entries[0]["text"] == "Text"
+
+    def test_text_before_first_timestamp_ignored(self):
+        """Test that text before first timestamp is ignored."""
+        content = """Random text
+More random text
+0:00
+Real text"""
+        entries = parse_simple(content)
+        assert len(entries) == 1
+        assert entries[0]["text"] == "Real text"
+
+    def test_round_to_seconds(self):
+        """Test parsing with round_to_seconds flag."""
+        content = """0:01
+Text 1
+0:03
+Text 2"""
+        entries = parse_simple(content, round_to_seconds=True)
+        assert entries[0]["start"] == 1
+        assert entries[0]["end"] == 3
+        assert entries[1]["start"] == 3
+        assert entries[1]["end"] == 8  # 3 + 5 default duration
+
+    def test_custom_default_duration(self):
+        """Test using custom default duration for last entry."""
+        content = """0:00
+Only entry"""
+        entries = parse_simple(content, default_duration_ms=10000)
+        assert entries[0]["end"] == 10000
+
+    def test_empty_content_raises(self):
+        """Test that empty content raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot parse empty content"):
+            parse_simple("")
+
+    def test_only_whitespace_raises(self):
+        """Test that only whitespace raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot parse empty content"):
+            parse_simple("\n\n   \n")
+
+    def test_blank_lines_between_entries(self):
+        """Test handling blank lines between entries."""
+        content = """0:00
+Text 1
+
+
+0:05
+Text 2"""
+        entries = parse_simple(content)
+        assert len(entries) == 2
+        assert entries[0]["text"] == "Text 1"
+        assert entries[1]["text"] == "Text 2"
+
+
+class TestParseSubtitles:
+    """Tests for parse_subtitles unified parser."""
+
+    def test_auto_detect_sbv(self):
+        """Test auto-detection of SBV format."""
+        content = """0:00:01.000,0:00:03.000
+Subtitle text"""
+        entries = parse_subtitles(content)
+        assert len(entries) == 1
+        assert entries[0]["start"] == 1000
+        assert entries[0]["end"] == 3000
+
+    def test_auto_detect_simple(self):
+        """Test auto-detection of simple format."""
+        content = """0:00
+Text 1
+0:05
+Text 2"""
+        entries = parse_subtitles(content)
+        assert len(entries) == 2
+        assert entries[0]["end"] == 5000
+        assert entries[1]["end"] == 10000  # 5s + 5s default
+
+    def test_format_hint_sbv(self):
+        """Test using format hint to force SBV parsing."""
+        content = """0:00:01.000,0:00:03.000
+Text"""
+        entries = parse_subtitles(content, format_hint="sbv")
+        assert len(entries) == 1
+        assert entries[0]["start"] == 1000
+
+    def test_format_hint_simple(self):
+        """Test using format hint to force simple parsing."""
+        content = """0:00
+Text"""
+        entries = parse_subtitles(content, format_hint="simple")
+        assert len(entries) == 1
+        assert entries[0]["start"] == 0
+
+    def test_round_to_seconds_sbv(self):
+        """Test round_to_seconds with SBV format."""
+        content = """0:00:01.500,0:00:03.800
+Text"""
+        entries = parse_subtitles(content, round_to_seconds=True)
+        assert entries[0]["start"] == 2
+        assert entries[0]["end"] == 4
+
+    def test_round_to_seconds_simple(self):
+        """Test round_to_seconds with simple format."""
+        content = """0:01
+Text 1
+0:05
+Text 2"""
+        entries = parse_subtitles(content, round_to_seconds=True)
+        assert entries[0]["start"] == 1
+        assert entries[0]["end"] == 5
+
+    def test_custom_default_duration(self):
+        """Test custom default_duration_ms for simple format."""
+        content = """0:00
+Only entry"""
+        entries = parse_subtitles(content, default_duration_ms=10000)
+        assert entries[0]["end"] == 10000
+
+    def test_invalid_format_hint_raises(self):
+        """Test that invalid format hint raises ValueError."""
+        content = """0:00
+Text"""
+        with pytest.raises(ValueError, match="Unknown format"):
+            parse_subtitles(content, format_hint="invalid")
+
+    def test_integration_with_merge(self):
+        """Test that parse_subtitles works with merge_subtitles."""
+        content = """0:00
+Text 1
+0:01
+Text 2
+0:02
+Text 3
+0:03
+Text 4"""
+        entries = parse_subtitles(content)
+        # Entries: 0-1s, 1-2s, 2-3s, 3-8s (last gets 5s default)
+        # Merge with 3s duration: first three entries (each 1s) should merge
+        # Last entry is 5s (>= threshold 2s) so won't merge
+        merged = merge_subtitles(entries, duration_seconds=3, use_seconds=False)
+        assert len(merged) == 2
+        assert merged[0]["text"] == "Text 1 Text 2 Text 3"
+        assert merged[0]["start"] == 0
+        assert merged[0]["end"] == 3000
+        assert merged[1]["text"] == "Text 4"

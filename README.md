@@ -78,6 +78,41 @@ svb2txt input.sbv -f HH:MM:SS.Mi
 svb2txt input.sbv -s
 ```
 
+### analyze_sbv - Analyze Timing Anomalies
+
+Detect timing anomalies in SBV files, including gaps between subtitles, too-short phrases, and silence periods.
+
+```bash
+# Analyze an SBV file and write results to JSON
+analyze_sbv input.sbv -o analysis.json
+
+# Print analysis to stdout
+analyze_sbv input.sbv
+
+# Include summary statistics
+analyze_sbv input.sbv -o report.json --include-stats
+
+# Custom thresholds (in milliseconds)
+analyze_sbv input.sbv --gap-threshold 500 --min-phrase 100 --silence-threshold 5000
+```
+
+**Options:**
+- `-o, --output`: Output JSON file (default: stdout)
+- `--gap-threshold`: Minimum gap duration in ms to report (default: 1000)
+- `--min-phrase`: Minimum acceptable phrase duration in ms (default: 300)
+- `--silence-threshold`: Minimum duration in ms to consider as silence (default: 3000)
+- `--include-stats`: Include summary statistics in output
+- `--indent`: JSON indentation level (default: 2)
+
+**Detected Anomalies:**
+- **Gaps**: Pauses between consecutive subtitles
+- **Short phrases**: Subtitles below minimum duration threshold
+- **Silence**: Extended periods with no subtitles (potential scene breaks)
+
+Each anomaly includes severity level (low/medium/high), timestamps, duration, and context information.
+
+See [ANALYZER_USAGE.md](ANALYZER_USAGE.md) for detailed examples and output format.
+
 ## SBV Format
 
 Each subtitle entry in the SBV format consists of:

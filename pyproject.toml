@@ -26,6 +26,7 @@ classifiers = [
 svb2json = "svb2json.cli:main"
 svb2txt = "svb2json.cli_txt:main"
 chunk2tokens = "svb2json.chunk2tokens:main"
+analyze_sbv = "svb2json.cli_analyzer:main"
 
 [project.optional-dependencies]
 dev = [
